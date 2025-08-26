@@ -3,8 +3,10 @@ use std::mem::size_of;
 use std::slice;
 use std::sync::{Arc, Mutex};
 
-pub(crate) type WorkerMessageSender = ringbuf::HeapProducer<u8>;
-pub(crate) type WorkerMessageReceiver = ringbuf::HeapConsumer<u8>;
+use ringbuf::traits::{Consumer, Observer, Producer, Split};
+
+pub(crate) type WorkerMessageSender = ringbuf::HeapProd<u8>;
+pub(crate) type WorkerMessageReceiver = ringbuf::HeapCons<u8>;
 
 const MAX_MESSAGE_SIZE: usize = 8192;
 const N_MESSAGES: usize = 4;
@@ -38,15 +40,15 @@ fn publish_message(
     }
     let mut body = unsafe { slice::from_raw_parts(body, size) };
     let total_size = size_of::<usize>() + size;
-    if sender.free_len() < total_size {
+    if sender.vacant_len() < total_size {
         return lv2_sys::LV2_Worker_Status_LV2_WORKER_ERR_NO_SPACE;
     }
     let size_as_bytes = size.to_be_bytes();
     sender.push_slice(&size_as_bytes);
     let result = sender.read_from(&mut body, Some(size));
     match result {
-        Ok(_) => lv2_sys::LV2_Worker_Status_LV2_WORKER_SUCCESS,
-        Err(_) => lv2_sys::LV2_Worker_Status_LV2_WORKER_ERR_UNKNOWN,
+        Some(_) => lv2_sys::LV2_Worker_Status_LV2_WORKER_SUCCESS,
+        None => lv2_sys::LV2_Worker_Status_LV2_WORKER_ERR_UNKNOWN,
     }
 }
 
@@ -57,6 +59,7 @@ fn pop_message(receiver: &mut WorkerMessageReceiver) -> WorkerMessage {
     let mut body: MessageBody = [0; MAX_MESSAGE_SIZE];
     let mut slice = &mut body[..];
     receiver.write_into(&mut slice, Some(size)).unwrap();
+
     WorkerMessage { size, body }
 }
 
@@ -121,7 +124,7 @@ impl Worker {
     /// the results back to the realtime thread.
     pub fn do_work(&mut self) {
         let plugin_is_alive = self.plugin_is_alive.lock().unwrap();
-        while *plugin_is_alive && self.receiver.len() > size_of::<usize>() {
+        while *plugin_is_alive && self.receiver.occupied_len() > size_of::<usize>() {
             let mut message = pop_message(&mut self.receiver);
             if let Some(work_function) = self.interface.work {
                 let sender = &mut self.sender as *mut WorkerMessageSender as *mut c_void;
@@ -164,24 +167,26 @@ pub(crate) unsafe fn maybe_get_worker_interface(
     common_uris: &crate::CommonUris,
     instance: &mut lilv::instance::ActiveInstance,
 ) -> Option<lv2_sys::LV2_Worker_Interface> {
-    if !plugin.has_feature(&common_uris.worker_schedule_feature_uri) {
-        return None;
+    unsafe {
+        if !plugin.has_feature(&common_uris.worker_schedule_feature_uri) {
+            return None;
+        }
+        // TODO: Remove below after
+        // https://github.com/poidl/lv2_raw/issues/4 is fixed.
+        let descriptor = instance.instance().descriptor().unwrap();
+        type ExtDataFn = extern "C" fn(uri: *const u8) -> *const c_void;
+        let extension_data: Option<ExtDataFn> = std::mem::transmute(descriptor.extension_data);
+        extension_data?;
+        // Delete up to here.
+        Some(
+            *instance
+                .instance()
+                .extension_data::<lv2_sys::LV2_Worker_Interface>(
+                    "http://lv2plug.in/ns/ext/worker#interface",
+                )?
+                .as_ref(),
+        )
     }
-    // TODO: Remove below after
-    // https://github.com/poidl/lv2_raw/issues/4 is fixed.
-    let descriptor = instance.instance().descriptor().unwrap();
-    type ExtDataFn = extern "C" fn(uri: *const u8) -> *const c_void;
-    let extension_data: Option<ExtDataFn> = std::mem::transmute(descriptor.extension_data);
-    extension_data?;
-    // Delete up to here.
-    Some(
-        *instance
-            .instance()
-            .extension_data::<lv2_sys::LV2_Worker_Interface>(
-                "http://lv2plug.in/ns/ext/worker#interface",
-            )?
-            .as_ref(),
-    )
 }
 
 // Run this in the real-time thread
@@ -191,7 +196,7 @@ pub(crate) fn handle_work_responses(
     receiver: &mut WorkerMessageReceiver,
     handle: lv2_sys::LV2_Handle,
 ) {
-    while receiver.len() > size_of::<usize>() {
+    while receiver.occupied_len() > size_of::<usize>() {
         let mut message = pop_message(receiver);
         if let Some(work_response_function) = worker_interface.work_response {
             unsafe { work_response_function(handle, message.size as u32, message.data()) };
