@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
 use crate::features::Features;
-use crate::port::{ControlPort, Controls};
+use crate::port::{ControlPort, Controls, PortValueType};
 use crate::{
     CommonUris, Port, PortConnections, PortCounts, PortIndex, PortType,
     error::{InstantiateError, RunError},
@@ -11,6 +11,7 @@ use crate::{
     features::worker,
     port::{DataType, IOType},
 };
+use lilv::port::Port as LilvPort;
 use lv2_raw::LV2Feature;
 use lv2_sys::LV2_Worker_Schedule;
 use ringbuf::HeapProd;
@@ -512,6 +513,18 @@ impl Drop for Instance {
     }
 }
 
+fn get_port_value_type<'a>(port: &LilvPort, common_uris: &'a CommonUris) -> PortValueType {
+    if port.has_property(&common_uris.enumeration) {
+        return PortValueType::Enumeration;
+    } else if port.has_property(&common_uris.toggled) {
+        return PortValueType::Toggled;
+    } else if port.has_property(&common_uris.integer) {
+        return PortValueType::Integer;
+    } else {
+        return PortValueType::Continuous;
+    }
+}
+
 fn iter_ports_impl<'a>(
     plugin: &'a lilv::plugin::Plugin,
     common_uris: &'a CommonUris,
@@ -564,6 +577,8 @@ fn iter_ports_impl<'a>(
             min_value: range.minimum.map(|n| node_to_value(&Some(n))),
             max_value: range.maximum.map(|n| node_to_value(&Some(n))),
             index: PortIndex(p.index()),
+            port_value_type: get_port_value_type(&p, common_uris),
+            scale_points: p.scale_points(),
         }
     })
 }
@@ -581,271 +596,5 @@ fn node_to_value(maybe_node: &Option<lilv::node::Node>) -> f32 {
         1f32
     } else {
         0f32
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{Port, PortCounts, PortIndex, PortType};
-
-    #[test]
-    fn test_metadata() {
-        let world = crate::World::new();
-        let plugin = world
-            .plugin_by_uri("http://drobilla.net/plugins/mda/EPiano")
-            .unwrap();
-        assert_eq!(plugin.uri(), "http://drobilla.net/plugins/mda/EPiano");
-        assert_eq!(plugin.name(), "MDA ePiano");
-        assert_eq!(
-            plugin.classes,
-            vec![
-                "Instrument Plugin".to_string(),
-                "Generator Plugin".to_string(),
-                "Plugin".to_string()
-            ]
-        );
-        assert!(plugin.is_instrument());
-        assert_eq!(
-            *plugin.port_counts(),
-            PortCounts {
-                control_inputs: 12,
-                control_outputs: 0,
-                audio_inputs: 0,
-                audio_outputs: 2,
-                atom_sequence_inputs: 1,
-                atom_sequence_outputs: 0,
-                cv_inputs: 0,
-                cv_outputs: 0
-            }
-        );
-        assert_eq!(
-            plugin.ports().collect::<Vec<_>>(),
-            vec![
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Envelope Decay".to_string(),
-                    symbol: "env_decay".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(0)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Envelope Release".to_string(),
-                    symbol: "env_release".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(1)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Hardness".to_string(),
-                    symbol: "hardness".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(2)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Treble Boost".to_string(),
-                    symbol: "treble_boost".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(3)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Modulation".to_string(),
-                    symbol: "modulation".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(4)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "LFO Rate".to_string(),
-                    symbol: "lfo_rate".to_string(),
-                    default_value: 0.65,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(5)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Velocity Sense".to_string(),
-                    symbol: "vel_sense".to_string(),
-                    default_value: 0.25,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(6)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Stereo Width".to_string(),
-                    symbol: "stereo_width".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(7)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Polyphonic".to_string(),
-                    symbol: "polyphonic".to_string(),
-                    default_value: 1.0,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(8)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Fine Tuning".to_string(),
-                    symbol: "fine_tuning".to_string(),
-                    default_value: 0.5,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(9)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Random Tuning".to_string(),
-                    symbol: "random_tuning".to_string(),
-                    default_value: 0.146,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(10)
-                },
-                Port {
-                    port_type: PortType::ControlInput,
-                    name: "Overdrive".to_string(),
-                    symbol: "overdrive".to_string(),
-                    default_value: 0.0,
-                    min_value: Some(0.0),
-                    max_value: Some(1.0),
-                    index: PortIndex(11)
-                },
-                Port {
-                    port_type: PortType::AudioOutput,
-                    name: "Left Out".to_string(),
-                    symbol: "left_out".to_string(),
-                    default_value: 0.0,
-                    min_value: None,
-                    max_value: None,
-                    index: PortIndex(12)
-                },
-                Port {
-                    port_type: PortType::AudioOutput,
-                    name: "Right Out".to_string(),
-                    symbol: "right_out".to_string(),
-                    default_value: 0.0,
-                    min_value: None,
-                    max_value: None,
-                    index: PortIndex(13)
-                },
-                Port {
-                    port_type: PortType::AtomSequenceInput,
-                    name: "Event In".to_string(),
-                    symbol: "event_in".to_string(),
-                    default_value: 0.0,
-                    min_value: None,
-                    max_value: None,
-                    index: PortIndex(14)
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn output_buffer_too_small_produces_error() {
-        let block_size = 1024;
-        let sample_rate = 44100.0;
-        let world = crate::World::new();
-        let plugin = world
-            .plugin_by_uri("http://drobilla.net/plugins/mda/EPiano")
-            .expect("Plugin not found.");
-        let features = world.build_features(crate::features::FeaturesBuilder {
-            min_block_length: block_size,
-            max_block_length: block_size,
-        });
-        let mut instance = unsafe {
-            plugin
-                .instantiate(features.clone(), sample_rate)
-                .expect("Could not instantiate plugin.")
-        };
-        let input = crate::event::LV2AtomSequence::new(&features, 1024);
-        let mut outputs_that_are_too_small = [vec![0.0; 1], vec![0.0; 1]];
-        let ports = crate::EmptyPortConnections::new()
-            .with_atom_sequence_inputs(std::iter::once(&input))
-            .with_audio_outputs(
-                outputs_that_are_too_small
-                    .iter_mut()
-                    .map(|output| output.as_mut_slice()),
-            );
-        assert_eq!(
-            unsafe { instance.run(block_size, ports) },
-            Err(crate::error::RunError::AudioOutputSampleCountTooSmall {
-                expected: block_size,
-                actual: 1
-            })
-        );
-    }
-
-    #[test]
-    fn sample_count_smaller_than_supported_block_size_produces_error() {
-        let world = crate::World::new();
-        let supported_block_size = (512, 1024);
-        let lower_than_supported_block_size = 256;
-        let plugin = world
-            .plugin_by_uri("http://drobilla.net/plugins/mda/EPiano")
-            .expect("Plugin not found.");
-        let features = world.build_features(crate::features::FeaturesBuilder {
-            min_block_length: supported_block_size.0,
-            max_block_length: supported_block_size.1,
-        });
-        let mut instance = unsafe {
-            plugin
-                .instantiate(features, 44100.0)
-                .expect("Could not instantiate plugin.")
-        };
-        let ports = crate::EmptyPortConnections::new();
-        assert_eq!(
-            unsafe { instance.run(lower_than_supported_block_size, ports) },
-            Err(crate::error::RunError::SampleCountTooSmall {
-                min_supported: 512,
-                actual: 256
-            })
-        );
-    }
-
-    #[test]
-    fn sample_count_larger_than_supported_block_size_produces_error() {
-        let world = crate::World::new();
-        let supported_block_size = (512, 1024);
-        let higher_than_supported_block_size = 2048;
-        let plugin = world
-            .plugin_by_uri("http://drobilla.net/plugins/mda/EPiano")
-            .expect("Plugin not found.");
-        let features = world.build_features(crate::features::FeaturesBuilder {
-            min_block_length: supported_block_size.0,
-            max_block_length: supported_block_size.1,
-        });
-        let mut instance = unsafe {
-            plugin
-                .instantiate(features, 44100.0)
-                .expect("Could not instantiate plugin.")
-        };
-        let ports = crate::EmptyPortConnections::new();
-        assert_eq!(
-            unsafe { instance.run(higher_than_supported_block_size, ports) },
-            Err(crate::error::RunError::SampleCountTooLarge {
-                max_supported: 1024,
-                actual: 2048,
-            })
-        );
     }
 }

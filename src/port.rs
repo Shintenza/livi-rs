@@ -1,3 +1,5 @@
+use lilv::port::ScalePoints;
+
 use crate::event::LV2AtomSequence;
 
 /// The type of IO for the port. Either input or output.
@@ -9,6 +11,15 @@ pub enum IOType {
     // The data is an input to the plugin. Usually this corresponds to an `&mut`
     // and not an `&`.
     Output,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum PortValueType {
+    #[default]
+    Continuous,
+    Integer,
+    Toggled,
+    Enumeration,
 }
 
 /// The data type pointed to by the port.
@@ -64,7 +75,7 @@ pub enum PortType {
 pub struct PortIndex(pub usize);
 
 /// A port represents a connection (either input or output) to a plugin.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Port {
     /// The type of port.
     pub port_type: PortType,
@@ -86,6 +97,10 @@ pub struct Port {
 
     /// The index of this port within the plugin.
     pub index: PortIndex,
+
+    pub port_value_type: PortValueType,
+
+    pub scale_points: ScalePoints,
 }
 
 /// A `PortConnections` object with no connections.

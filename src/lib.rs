@@ -241,6 +241,9 @@ struct CommonUris {
     cv_port_uri: lilv::node::Node,
     mod_cv_port_uri: lilv::node::Node,
     worker_schedule_feature_uri: lilv::node::Node,
+    integer: lilv::node::Node,
+    toggled: lilv::node::Node,
+    enumeration: lilv::node::Node,
 }
 
 impl CommonUris {
@@ -254,6 +257,9 @@ impl CommonUris {
             cv_port_uri: world.new_uri("http://lv2plug.in/ns/lv2core#CVPort"),
             mod_cv_port_uri: world.new_uri("http://moddevices.com/ns/mod#CVPort"),
             worker_schedule_feature_uri: world.new_uri("http://lv2plug.in/ns/ext/worker#schedule"),
+            integer: world.new_uri("http://lv2plug.in/ns/lv2core#integer"),
+            toggled: world.new_uri("http://lv2plug.in/ns/lv2core#toggled"),
+            enumeration: world.new_uri("http://lv2plug.in/ns/lv2core#enumeration"),
         }
     }
 }
