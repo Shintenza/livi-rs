@@ -1,4 +1,4 @@
-use lilv::port::ScalePoints;
+pub use lilv::port::{ScalePoint, ScalePoints};
 
 use crate::event::LV2AtomSequence;
 

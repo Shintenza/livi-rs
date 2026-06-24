@@ -42,7 +42,10 @@ use std::sync::Arc;
 pub use features::worker::{Worker, WorkerManager};
 pub use features::{Features, FeaturesBuilder};
 pub use plugin::{Instance, Plugin};
-pub use port::{EmptyPortConnections, Port, PortConnections, PortCounts, PortIndex, PortType};
+pub use port::{
+    EmptyPortConnections, Port, PortConnections, PortCounts, PortIndex, PortType, PortValueType,
+    ScalePoint, ScalePoints,
+};
 
 /// The underlying `lilv` library.
 pub use lilv;
